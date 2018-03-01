@@ -2,8 +2,9 @@
 
 import sys
 
-sys.path.append('C:\\Users\\T149900\\Documents\\Visual Studio 2017\\Projects\\PythonApplication4')
+sys.path.append('D:\\anders\\FM_FTRL_AVX\\')
 
+import numpy.random as rnd
 from hellocython import FM_FTRL_EXP
 
 a = FM_FTRL_EXP(9)

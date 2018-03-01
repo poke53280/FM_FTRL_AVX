@@ -17,7 +17,7 @@ setup(ext_modules = cythonize(Extension(
            sources=["hellocython.pyx", "SinglePredict.cpp", "SingleUpdate.cpp"],   
            include_dirs=[numpy.get_include(), '.'],                                                               
            language="c++",
-           extra_compile_args = [fopenmp_arg],
+           extra_compile_args = [],
            extra_link_args=[])
       ))
 

@@ -1,10 +1,20 @@
 
 #include "SingleUpdate.h"
 
-#include <omp.h>
+#undef USE_AVX2
+
+//#include <omp.h>
 #include <stdio.h>
 #include <cmath>
+
+
+#ifdef USE_AVX2
+
 #include <immintrin.h>
+
+#endif
+
+
 
 int doubler_EXT(int d) {
   return d * 2;
@@ -15,15 +25,15 @@ void update_single_EXT(const int* inds, double* vals, int lenn, const double e, 
 
   printf("Running update_single_EXT(), at least for a while...\r\n");
 
-  int num_thread;
-
+  int num_thread = 1;
+/*
   if (nThreads <= 0) {
     num_thread = omp_get_max_threads();
   }
   else {
     num_thread = nThreads;
   }
-
+*/
 
   printf("Running on %d threads\r\n", num_thread);
 
@@ -40,7 +50,7 @@ void update_single_EXT(const int* inds, double* vals, int lenn, const double e, 
 
 
   // Parallell for
-#pragma omp parallel for num_threads(num_thread)
+// #pragma omp parallel for num_threads(num_thread)
   for (int ii = 0; ii < lenn; ii++) {
 
     const int i = inds[ii];
@@ -57,10 +67,12 @@ void update_single_EXT(const int* inds, double* vals, int lenn, const double e, 
     const double lr = g* alpha_fm / (sqrt(n_fm[i]) + 1.0);
     const double reg = v - L2_fme;
 
+    int k = 0;
+
+#ifdef USE_AVX2
+
     __m256d reg2 = _mm256_set_pd(reg, reg, reg, reg);
     __m256d lr2 = _mm256_set_pd(lr, lr, lr, lr);
-
-    int k = 0;
 
     while (k + 3 < D_fm) {
 
@@ -84,6 +96,8 @@ void update_single_EXT(const int* inds, double* vals, int lenn, const double e, 
 
       k = k + 4;
     }
+
+#endif
 
     // Tail end
     for (; k < D_fm; k++) {

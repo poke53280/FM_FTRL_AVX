@@ -1,12 +1,20 @@
 
-
 #include "SinglePredict.h"
 
-#include <omp.h>
+#undef USE_AVX2
+
+// #include <omp.h>
 #include <stdio.h>
 #include <cmath>
+
+#ifdef USE_AVX2
+
 #include <immintrin.h>
+
+#endif
 #include <assert.h>
+
+
 
 int halfer_EXT_INT(int d) {
   return d / 2;
@@ -48,37 +56,38 @@ double predict_single_EXT(const int* inds, double* vals, int lenn, double L1, do
 
   double wi2 = 0.0;
 
-  int num_thread;
+  int num_thread = 1;
 
+/*
   if (nThreads <= 0) {
     num_thread = omp_get_max_threads();
   }
   else {
     num_thread = nThreads;
   }
-
+*/
 
   printf("Running on %d threads\r\n", num_thread);
 
   double* acwfmk = new double[D_fm * num_thread];
 
-#pragma omp parallel for num_threads(num_thread)
+// #pragma omp parallel for num_threads(num_thread)
   for (int k = 0; k < D_fm * num_thread; k++) {
     acwfmk[k] = 0.0;
   }
 
   double* wi2_acc = new double[num_thread * 4];
 
-#pragma omp parallel for num_threads(num_thread)
+// #pragma omp parallel for num_threads(num_thread)
   for (int k = 0; k < num_thread * 4; k++) {
     wi2_acc[k] = 0.0;
   }
 
 
-#pragma omp parallel for num_threads(num_thread)
+// #pragma omp parallel for num_threads(num_thread)
   for (int ii = 0; ii < lenn; ii++) {
 
-    const int iThread = omp_get_thread_num();
+    const int iThread = 0; //  omp_get_thread_num();
 
     assert(iThread >= 0 && iThread < num_thread);
 
@@ -94,9 +103,11 @@ double predict_single_EXT(const int* inds, double* vals, int lenn, double L1, do
 
     int k = 0;
 
+#ifdef USE_AVX2
+
     __m256d v256 = _mm256_set_pd(v, v, v, v);
 
-    while (k + 3 < D_fm) {
+    while (false && k + 3 < D_fm) {
 
       const int z_idx = z_idx0 + k;
 
@@ -126,6 +137,7 @@ double predict_single_EXT(const int* inds, double* vals, int lenn, double L1, do
 
       k = k + 4;
     }
+#endif
 
     // Tail end
     for (; k < D_fm; k++) {

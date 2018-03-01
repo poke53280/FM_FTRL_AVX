@@ -10,7 +10,7 @@ from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
 import sys
-import randomstate.prng.xoroshiro128plus as rnd
+import numpy.random as rnd
 
 if sys.version_info.major == 3:
 	import pickle as pkl
