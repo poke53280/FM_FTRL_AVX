@@ -1,5 +1,4 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True
-
 import numpy as np
 import gzip
 cimport cython
@@ -10,7 +9,7 @@ from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
 import sys
-import numpy.random as rnd
+import randomstate.prng.xoroshiro128plus as rnd
 
 if sys.version_info.major == 3:
 	import pickle as pkl
@@ -19,19 +18,20 @@ else:
 
 np.import_array()
 
-cdef extern:
-	double predict_single_EXT(const int* inds, double* vals, int lenn,
-		double L1, double baL2, double ialpha, double beta, double* w, double* z, double* n, double* w_fm, double* z_fm, double* n_fm, double weight_fm, int D_fm, bint bias_term, int nThreads)
-
-cdef extern:
+cdef extern from "SingleUpdate.h":
 	void update_single_EXT(const int* inds, double* vals, int lenn, const double e, double ialpha, double* w, double* z, double* n,
-		double alpha_fm, const double L2_fm, double* w_fm, double* z_fm, double* n_fm, int D_fm, bint bias_term, int nThreads)
+					double alpha_fm, const double L2_fm, double* w_fm, double* z_fm, double* n_fm, int D_fm, int bias_term, int nThreads);
+
+cdef extern from "SinglePredict.h":
+	double predict_single_EXT(const int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
+		double* w, double* z, double* n, double* w_fm, double* z_fm, double* n_fm, double weight_fm, int D_fm, int bias_term, int nThreads);	
+
 
 cdef double inv_link_f(double e, int inv_link) nogil:
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0))) #Sigmoid + logloss
 	return e
 
-cdef double predict_single_BASELINE(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
+cdef double predict_single_BASE(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
 						   double* w, double* z, double* n, double* w_fm, double* z_fm, double* n_fm, double weight_fm,
 						   int D_fm, bint bias_term, int threads) nogil:
 	cdef int i, ii, k
@@ -62,7 +62,7 @@ cdef double predict_single_BASELINE(int* inds, double* vals, int lenn, double L1
 	e2= (e2- wi2)* 0.5 *weight_fm
 	return e+e2
 
-cdef void update_single_BASELINE(int* inds, double* vals, int lenn, double e, double ialpha, double* w, double* z, double* n,
+cdef void update_single_BASE(int* inds, double* vals, int lenn, double e, double ialpha, double* w, double* z, double* n,
 						double alpha_fm, double L2_fm, double* w_fm, double* z_fm, double* n_fm,
 						int D_fm, bint bias_term, int threads) nogil:
 	cdef int i, ii, k
@@ -92,8 +92,7 @@ cdef void update_single_BASELINE(int* inds, double* vals, int lenn, double e, do
 		for k in range(D_fm):  z_fmi[k]-= lr * (w_fm[k] - z_fmi[k] * reg)
 		n_fm[i] += e2
 
-
-cdef class FM_FTRL_EXP:
+cdef class FM_FTRL_GITHUB:
 	cdef double[:] w
 	cdef double[:] z
 	cdef double[:] n
@@ -202,7 +201,7 @@ cdef class FM_FTRL_EXP:
 			vals= <double*> X_data.data + ptr
 
 			if self.use_baseline == 1:
-				pp[row]= inv_link_f(predict_single_BASELINE(inds, vals, lenn,
+				pp[row]= inv_link_f(predict_single_BASE(inds, vals, lenn,
 											   L1, baL2, ialpha, beta, w, z, n,
 											   w_fm, z_fm, n_fm, weight_fm,
 											   D_fm, bias_term, threads), self.inv_link)
@@ -212,23 +211,29 @@ cdef class FM_FTRL_EXP:
 											   L1, baL2, ialpha, beta, w, z, n,
 											   w_fm, z_fm, n_fm, weight_fm,
 											   D_fm, bias_term, threads), self.inv_link)
+
+
 		return p
 
 
-	def partial_fit(self, X, y, int threads = 0, int seed = 0):
-		return self.fit(X, y, threads = threads, seed = seed, reset= False)
+	def partial_fit(self, X, y, sample_weight= None, int threads = 0, int seed = 0):
+		return self.fit(X, y, sample_weight= sample_weight, threads = threads, seed = seed, reset= False)
 
-	def fit(self, X, y, int threads= 0, int seed= 0, reset= True):
+	def fit(self, X, y, sample_weight= None, int threads= 0, int seed= 0, reset= True):
 		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
-		return self.fit_f(np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices), np.ascontiguousarray(X.indptr), y, threads, seed)
+		if sample_weight is not None and type(sample_weight) != np.array:
+			sample_weight= np.array(sample_weight, dtype=np.float64)
+		return self.fit_f(X.data, X.indices, X.indptr, y, sample_weight, threads, seed)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr,
-					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed):
+					np.ndarray[double, ndim=1, mode='c'] y,
+					sample_weight,
+					int threads, int seed):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
 					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi, \
 					e_noise= self.e_noise, e_clip= self.e_clip, abs_e
@@ -249,7 +254,7 @@ cdef class FM_FTRL_EXP:
 				vals= <double*> X_data.data+ptr
 
 				if self.use_baseline == 1:
-					e= inv_link_f(predict_single_BASELINE(inds, vals, lenn,
+					e= inv_link_f(predict_single_BASE(inds, vals, lenn,
 											L1, baL2, ialpha, beta, w, z, n,
 											w_fm, z_fm, n_fm, weight_fm,
 											D_fm, bias_term, threads), inv_link) -ys[row]
@@ -258,20 +263,25 @@ cdef class FM_FTRL_EXP:
 											L1, baL2, ialpha, beta, w, z, n,
 											w_fm, z_fm, n_fm, weight_fm,
 											D_fm, bias_term, threads), inv_link) -ys[row]
+											
 				abs_e= fabs(e)
 				e_total+= abs_e
 				e += (rand.rand() - 0.5) * e_noise
 				if abs_e> e_clip:
 					if e>0:  e= e_clip
 					else:  e= -e_clip
+				if sample_weight is not None:
+					e*= sample_weight[row]
 
 				if self.use_baseline == 1:
-					update_single_BASELINE(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
-							  bias_term, threads)
+					update_single_BASE(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
+								 bias_term, threads)
 				else:
 					update_single_EXT(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
-							  bias_term, threads)
+								 bias_term, threads)
+
 			if self.verbose>0:  print "Total e:", e_total
+		return self
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:
@@ -330,17 +340,4 @@ cdef class FM_FTRL_EXP:
 		 self.seed,
 		 self.bias_term,
 		 self.verbose,
-		 self.use_baseline)= params	
-
-
-
-
-
-
-
-
-
-
-
-
-
+		 self.use_baseline)= params

@@ -12,13 +12,14 @@ else:
     fopenmp_arg = "-fopenmp"
 
 
-setup(ext_modules = cythonize(Extension(
-           "hellocython",                                         
-           sources=["hellocython.pyx", "SinglePredict.cpp", "SingleUpdate.cpp"],   
-           include_dirs=[numpy.get_include(), '.'],                                                               
-           language="c++",
-           extra_compile_args = [],
-           extra_link_args=[])
-      ))
+setup(ext_modules = [
+        Extension(
+            "hello9",
+            sources = ["hellocython2.pyx", "SingleUpdate.c", "SinglePredict.c"],
+            libraries= [],
+            include_dirs=[numpy.get_include(), '.'],
+            extra_compile_args = [fopenmp_arg]
+            )]
+      )
 
 
