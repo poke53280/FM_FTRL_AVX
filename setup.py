@@ -7,9 +7,10 @@ import os
 from setuptools import Extension
 
 if os.name == 'nt':
-    fopenmp_arg= "/openmp"
+    compile_args_OS = "/openmp"
 else:
-    fopenmp_arg = "-fopenmp"
+    compile_args_OS = ["-O3", "-fopenmp", "-ffast-math", "-mavx"]
+
 
 
 setup(ext_modules = [
@@ -18,7 +19,7 @@ setup(ext_modules = [
             sources = ["hellocython2.pyx", "SingleUpdate.c", "SinglePredict.c"],
             libraries= [],
             include_dirs=[numpy.get_include(), '.'],
-            extra_compile_args = [fopenmp_arg]
+            extra_compile_args = compile_args_OS
             )]
       )
 
