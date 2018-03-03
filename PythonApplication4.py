@@ -16,6 +16,8 @@ from wordbatch.models import FM_FTRL
 
 b = FM_FTRL(11)
 
+#test commit
+
 
 
 
