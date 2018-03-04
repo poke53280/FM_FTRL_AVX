@@ -1,6 +1,8 @@
 
 #include "SingleUpdate.h"
 
+#include <math.h>
+
 #define USE_AVX2
 #define USE_OMP
 
