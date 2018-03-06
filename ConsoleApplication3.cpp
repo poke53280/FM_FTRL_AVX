@@ -10,8 +10,7 @@
 #include <iostream>
 
 
-#include "SingleUpdate.h"
-#include "SinglePredict.h"
+#include "avx_ext.h"
 
 double inv_link_f(double e, int inv_link) {
   if (inv_link == 1) {
@@ -409,7 +408,7 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
     double*
       pAcwfmk = acwfmk + iThread * D_fm;
 
-    double * wi2_acck = wi2_acc + iThread * 4;
+    double * wi2_acc_thread = wi2_acc + iThread * 4;
 
     const int idx = inds[ii];
     double v = vals[ii];
@@ -419,6 +418,8 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
     int k = 0;
 
     __m256d v256 = _mm256_set_pd(v, v, v, v);
+
+    __m256d w2_256 = _mm256_loadu_pd(wi2_acc_thread);
 
     while (k + 3 < D_fm) {
 
@@ -440,16 +441,13 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
 
       d = _mm256_mul_pd(d, d);
 
-
-      __m256d w2_256 = _mm256_loadu_pd(wi2_acck);
-
       w2_256 = _mm256_add_pd(w2_256, d);
-
-      _mm256_storeu_pd(wi2_acck, w2_256);
-
 
       k = k + 4;
     }
+    
+    _mm256_storeu_pd(wi2_acc_thread, w2_256);
+
 
     // Tail end
     for (; k < D_fm; k++) {
@@ -522,8 +520,8 @@ int main()
 
   open_mp_test();
 
-  const int lenn = 10000;
-  const int nRun = 500;
+  const int lenn = 100000;
+  const int nRun = 50;
   const int num_permutations = 400;
 
 

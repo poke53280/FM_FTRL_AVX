@@ -17,7 +17,7 @@ else:
 setup(ext_modules = [
         Extension(
             "hello9",
-            sources = ["hellocython2.pyx", "SingleUpdate.c", "SinglePredict.c"],
+            sources = ["hellocython2.pyx", "avx_ext.c"],
             libraries= [],
             include_dirs=[numpy.get_include(), '.'],
             extra_compile_args = compile_args_OS,

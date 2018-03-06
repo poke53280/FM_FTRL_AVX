@@ -24,10 +24,7 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SinglePredict.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SingleUpdate.h">
+    <ClInclude Include="avx_ext.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -38,10 +35,7 @@
     <ClCompile Include="ConsoleApplication3.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="SinglePredict.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SingleUpdate.c">
+    <ClCompile Include="avx_ext.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
