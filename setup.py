@@ -7,10 +7,10 @@ import os
 from setuptools import Extension
 
 if os.name == 'nt':
-    compile_args_OS = ["/openmp", "/Ox"]
+    compile_args_OS = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
     link_args_OS = []
 else:
-    compile_args_OS = ["-O3", "-fopenmp", "-ffast-math", "-mavx"]
+    compile_args_OS = ["-O3", "-fopenmp", "-ffast-math", "-mavx2"]
     link_args_OS = ["-fopenmp"] 
 
 

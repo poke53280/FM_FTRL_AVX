@@ -105,6 +105,8 @@
       <OpenMPSupport>true</OpenMPSupport>
       <AssemblerOutput>All</AssemblerOutput>
       <AdditionalIncludeDirectories>C:\tmp2\FM_FTRL_AVX;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Fast</FloatingPointModel>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -140,6 +142,8 @@
       <OpenMPSupport>true</OpenMPSupport>
       <AssemblerOutput>All</AssemblerOutput>
       <AdditionalIncludeDirectories>C:\tmp2\FM_FTRL_AVX;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Fast</FloatingPointModel>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

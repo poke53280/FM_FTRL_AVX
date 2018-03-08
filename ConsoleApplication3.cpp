@@ -9,7 +9,6 @@
 #include <chrono>
 #include <iostream>
 
-
 #include "avx_ext.h"
 
 double inv_link_f(double e, int inv_link) {
@@ -73,7 +72,7 @@ void update_single_BASELINE(const int* inds, double* vals, int lenn, const doubl
 
       __m256d res = _mm256_sub_pd(z0, w3);
 
-      _mm256_store_pd(z_offset, res);
+      _mm256_storeu_pd(z_offset, res);
 
       k = k + 4;
     }
@@ -494,40 +493,18 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
 
 
 
-
-
-void open_mp_test()
-{
-
-  printf("Get max number of threads: %d\r\n", omp_get_max_threads());
-
-#pragma omp parallel for num_threads(4) 
-  for (int x = 0; x < 11; x++)
-  {
-    int nthreads = omp_get_num_threads();
-    int tid = omp_get_thread_num();
-
-    printf("x = %d, N = %d, TID = %d\r\n", x, nthreads, tid);
-
-
-  }
-
-}
-
-
 int main()
 {
 
-  open_mp_test();
-
-  const int lenn = 100000;
-  const int nRun = 50;
+  const int lenn = 1000000;
+  const int nRun = 100;
   const int num_permutations = 400;
 
 
-  const int nThreads = 1;
+  const int nThreads_EXT = 1;
+  const int nThreads_omp = 1;
 
-  int D_fm = 256;
+  int D_fm = 1024;
 
   double L1 = 0.00001;
   double baL2 = 0.1;
@@ -629,38 +606,40 @@ int main()
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
     // Writes w_fm0
-    double res_base = predict_single_EXT(inds0, vals0, lenn, L1, baL2, ialpha, beta, w0, z0, n0, w_fm0, z_fm0, n_fm0, weight_fm, D_fm, bias_term, nThreads);
+    double res_base = predict_single_EXT(inds0, vals0, lenn, L1, baL2, ialpha, beta, w0, z0, n0, w_fm0, z_fm0, n_fm0, weight_fm, D_fm, bias_term, nThreads_EXT);
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
 
     // Writes w_fm0
-    double res_omp = predict_single_OMP(inds1, vals1, lenn, L1, baL2, ialpha, beta, w1, z1, n1, w_fm1, z_fm1, n_fm1, weight_fm, D_fm, bias_term, nThreads);
+    double res_omp = predict_single_OMP(inds1, vals1, lenn, L1, baL2, ialpha, beta, w1, z1, n1, w_fm1, z_fm1, n_fm1, weight_fm, D_fm, bias_term, nThreads_omp);
 
     high_resolution_clock::time_point t3 = high_resolution_clock::now();
 
     // Writes z_fm
-    update_single_EXT(inds0, vals0, lenn, e, ialpha, w0, z0, n0, alpha_fm, L2_fm, w_fm0, z_fm0, n_fm0, D_fm, bias_term, nThreads);
+    update_single_EXT(inds0, vals0, lenn, e, ialpha, w0, z0, n0, alpha_fm, L2_fm, w_fm0, z_fm0, n_fm0, D_fm, bias_term, nThreads_EXT);
 
     high_resolution_clock::time_point t4 = high_resolution_clock::now();
 
     // Writes z_fm
-    update_single_OMP(inds1, vals1, lenn, e, ialpha, w1, z1, n1, alpha_fm, L2_fm, w_fm1, z_fm1, n_fm1, D_fm, bias_term, nThreads);
+    update_single_OMP(inds1, vals1, lenn, e, ialpha, w1, z1, n1, alpha_fm, L2_fm, w_fm1, z_fm1, n_fm1, D_fm, bias_term, nThreads_omp);
 
     high_resolution_clock::time_point t5 = high_resolution_clock::now();
 
-    duration<double> time_predict_baseline = duration_cast<duration<double>>(t2 - t1);
+    duration<double> time_predict_EXT = duration_cast<duration<double>>(t2 - t1);
     duration<double> time_predict_omp      = duration_cast<duration<double>>(t3 - t2);
-    duration<double> time_update_baseline  = duration_cast<duration<double>>(t4 - t3);
+    duration<double> time_update_EXT  = duration_cast<duration<double>>(t4 - t3);
     duration<double> time_update_omp       = duration_cast<duration<double>>(t5 - t4);
 
-    std::cout << "time_predict_baseline: " << time_predict_baseline.count() << " s." << std::endl;
+    std::cout << "time_predict_EXT     : " << time_predict_EXT.count() << " s." << std::endl;
     std::cout << "time_predict_omp     : " << time_predict_omp.count()      << " s." << std::endl;
-    std::cout << "time_update_baseline: "  << time_update_baseline.count()  << " s." << std::endl;
+    std::cout << "time_update_EXT      : "  << time_update_EXT.count()  << " s." << std::endl;
     std::cout << "time_update_omp: "       << time_update_omp.count()       << " s." << std::endl;
 
 
-    if (abs(res_base - res_omp) > 0.0001) {
-      printf("XXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXX");
+    double diff0 = abs(res_base - res_omp);
+
+    if (diff0 > 0.0001) {
+      printf("XXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXX, diff0 = %f\r\n", diff0);
     }
 
     for (int k = 0; k < D_fm; k++) {
@@ -669,7 +648,7 @@ int main()
       double zdiff = abs(z_fm0[k] - z_fm1[k]);
 
       if (wdiff > 0.0001 || zdiff > 0.0001) {
-        printf("XXXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXXXXXXx");
+        printf("XXXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXXXXXXx at k = %d\r\n", k);
       }
 
 
