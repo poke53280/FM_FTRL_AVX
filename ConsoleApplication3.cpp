@@ -18,7 +18,7 @@ double inv_link_f(double e, int inv_link) {
   return e;
 }
 
-void update_single_BASELINE(const int* inds, double* vals, int lenn, const double e, double ialpha, double* w, double* z, double* n,
+void update_single_FULLTEST(const int* inds, double* vals, int lenn, const double e, double ialpha, double* w, double* z, double* n,
   double alpha_fm, const double L2_fm, double* w_fm, double* z_fm, double* n_fm, int D_fm, bool bias_term) {
 
   const double e_sq = e * e;
@@ -244,22 +244,11 @@ double predict_single_BASELINE(const int* inds, double* vals, int lenn, double L
 
 
 void update_single_OMP(const int* inds, double* vals, int lenn, const double e, double ialpha, double* w, double* z, double* n,
-                          double alpha_fm, const double L2_fm, double* w_fm, double* z_fm, double* n_fm, int D_fm, bool bias_term, int nThreads) {
+                          double alpha_fm, const double L2_fm, double* w_fm, double* z_fm, double* n_fm, int D_fm, bool bias_term) {
   
 
 
-  int num_thread;
-
-  if (nThreads <= 0) {
-    num_thread = omp_get_max_threads();
-  }
-  else {
-    num_thread = nThreads;
-  }
-
-
-  printf("Running on %d threads\r\n", num_thread);
-
+  int num_thread = 1;
 
   const double e_sq = e * e;
  
@@ -272,8 +261,6 @@ void update_single_OMP(const int* inds, double* vals, int lenn, const double e, 
   const double L2_fme = L2_fm / e;
   
 
-  // Parallell for
-#pragma omp parallel for num_threads(num_thread)
   for (int ii = 0; ii < lenn; ii++) {
 
     const int i = inds[ii];
@@ -337,8 +324,8 @@ void update_single_OMP(const int* inds, double* vals, int lenn, const double e, 
   }
 }
 
-double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
-  double* w, double* z, double* n, double* w_fm, double* z_fm, double* n_fm, double weight_fm, int D_fm, bool bias_term, int nThreads) {
+double predict_single_FULL_TEST(const int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
+  double* w, double* z, double* n, double* w_fm, double* z_fm, double* n_fm, double weight_fm, int D_fm, bool bias_term, const bool is_avx) {
 
 
   double e = 0.0;
@@ -349,7 +336,6 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
     e += wi;
   }
 
-// #pragma omp parallel for
   for (int ii = 0; ii < lenn; ii++) {
 
     const int i = inds[ii];
@@ -370,37 +356,24 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
 
   double wi2 = 0.0;
 
-  int num_thread;
+  int num_thread = 1;
   
-  if (nThreads <= 0) {
-    num_thread = omp_get_max_threads();
-  }
-  else {
-    num_thread = nThreads;
-  }
-    
-
-  printf("Running on %d threads\r\n", num_thread);
-
   double* acwfmk = new double[D_fm * num_thread];
 
-#pragma omp parallel for num_threads(num_thread)
   for (int k = 0; k < D_fm * num_thread; k++) {
     acwfmk[k] = 0.0;
   }
 
   double* wi2_acc = new double[num_thread * 4];
 
-#pragma omp parallel for num_threads(num_thread)
   for (int k = 0; k < num_thread * 4; k++) {
     wi2_acc[k] = 0.0;
   }
 
 
-#pragma omp parallel for num_threads(num_thread)
   for (int ii = 0; ii < lenn; ii++) {
 
-    const int iThread = omp_get_thread_num();
+    const int iThread = 0;
 
     assert(iThread >= 0 && iThread < num_thread);
 
@@ -416,37 +389,40 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
 
     int k = 0;
 
-    __m256d v256 = _mm256_set_pd(v, v, v, v);
+    if (is_avx)
+    {
 
-    __m256d w2_256 = _mm256_loadu_pd(wi2_acc_thread);
+        __m256d v256 = _mm256_set_pd(v, v, v, v);
 
-    while (k + 3 < D_fm) {
+        __m256d w2_256 = _mm256_loadu_pd(wi2_acc_thread);
 
-      const int z_idx = z_idx0 + k;
+        while (k + 3 < D_fm) {
 
-      const double * z_offset = z_fm + z_idx;
+          const int z_idx = z_idx0 + k;
 
-      __m256d z = _mm256_loadu_pd(z_offset);
+          const double * z_offset = z_fm + z_idx;
 
-      __m256d d = _mm256_mul_pd(z, v256);
+          __m256d z = _mm256_loadu_pd(z_offset);
 
-      double * w_offset = pAcwfmk + k;
+          __m256d d = _mm256_mul_pd(z, v256);
 
-      __m256d w = _mm256_loadu_pd(w_offset);
+          double * w_offset = pAcwfmk + k;
 
-      w = _mm256_add_pd(w, d);
+          __m256d w = _mm256_loadu_pd(w_offset);
 
-      _mm256_storeu_pd(w_offset, w);
+          w = _mm256_add_pd(w, d);
 
-      d = _mm256_mul_pd(d, d);
+          _mm256_storeu_pd(w_offset, w);
 
-      w2_256 = _mm256_add_pd(w2_256, d);
+          d = _mm256_mul_pd(d, d);
 
-      k = k + 4;
+          w2_256 = _mm256_add_pd(w2_256, d);
+
+          k = k + 4;
+        }
+
+        _mm256_storeu_pd(wi2_acc_thread, w2_256);
     }
-    
-    _mm256_storeu_pd(wi2_acc_thread, w2_256);
-
 
     // Tail end
     for (; k < D_fm; k++) {
@@ -493,6 +469,7 @@ double predict_single_OMP(const int* inds, double* vals, int lenn, double L1, do
 
 
 
+
 int main()
 {
 
@@ -502,9 +479,8 @@ int main()
 
 
   const int nThreads_EXT = 1;
-  const int nThreads_omp = 1;
 
-  int D_fm = 1024;
+  int D_fm = 2048;
 
   double L1 = 0.00001;
   double baL2 = 0.1;
@@ -548,6 +524,9 @@ int main()
 
   std::default_random_engine generator;
   std::uniform_real_distribution<double> distribution(0.0, 1.0);
+
+  std::uniform_int_distribution<> disInt(1, 2);
+
 
   for (int ii = 0; ii < lenn; ii++) {
 
@@ -593,67 +572,92 @@ int main()
 
   for (int iRun = 0; iRun < nRun; iRun++) {
 
-    int iPermutation = iRun % num_permutations;
-
-    const std::vector<int>& pInd0 = P_idx0[iPermutation];
-    const std::vector<int>& pInd1 = P_idx1[iPermutation];
-
-    const int * inds0 = pInd0.data();
-    const int * inds1 = pInd1.data();
-
     using namespace std::chrono;
 
-    high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
-    // Writes w_fm0
-    double res_base = predict_single_EXT(inds0, vals0, lenn, L1, baL2, ialpha, beta, w0, z0, n0, w_fm0, z_fm0, n_fm0, weight_fm, D_fm, bias_term, nThreads_EXT);
+    double time_reference_acc = 0.0;
+    double time_experimental_acc = 0.0;
 
-    high_resolution_clock::time_point t2 = high_resolution_clock::now();
+    for (int iPredict = 0; iPredict < 100; iPredict++) {
 
-    // Writes w_fm0
-    double res_omp = predict_single_OMP(inds1, vals1, lenn, L1, baL2, ialpha, beta, w1, z1, n1, w_fm1, z_fm1, n_fm1, weight_fm, D_fm, bias_term, nThreads_omp);
+      double res_base;
+      double res_omp;
 
-    high_resolution_clock::time_point t3 = high_resolution_clock::now();
+      high_resolution_clock::time_point start_time_reference;
+      high_resolution_clock::time_point end_time_reference;
 
-    // Writes z_fm
-    update_single_EXT(inds0, vals0, lenn, e, ialpha, w0, z0, n0, alpha_fm, L2_fm, w_fm0, z_fm0, n_fm0, D_fm, bias_term, nThreads_EXT);
+      high_resolution_clock::time_point start_time_experimental;
+      high_resolution_clock::time_point end_time_experimental;
+       
+      int iPermutation = (iRun* nRun + iPredict) % num_permutations;
 
-    high_resolution_clock::time_point t4 = high_resolution_clock::now();
+      const std::vector<int>& pInd0 = P_idx0[iPermutation];
+      const std::vector<int>& pInd1 = P_idx1[iPermutation];
 
-    // Writes z_fm
-    update_single_OMP(inds1, vals1, lenn, e, ialpha, w1, z1, n1, alpha_fm, L2_fm, w_fm1, z_fm1, n_fm1, D_fm, bias_term, nThreads_omp);
+      const int * inds0 = pInd0.data();
+      const int * inds1 = pInd1.data();
 
-    high_resolution_clock::time_point t5 = high_resolution_clock::now();
+      const bool isRefFirst = disInt(generator) == 1;
 
-    duration<double> time_predict_EXT = duration_cast<duration<double>>(t2 - t1);
-    duration<double> time_predict_omp      = duration_cast<duration<double>>(t3 - t2);
-    duration<double> time_update_EXT  = duration_cast<duration<double>>(t4 - t3);
-    duration<double> time_update_omp       = duration_cast<duration<double>>(t5 - t4);
+      if (isRefFirst == 1)
+      {
+        start_time_reference = high_resolution_clock::now();
+        res_base = predict_fm_ftrl_avx(inds0, vals0, lenn, L1, baL2, ialpha, beta, w0, z0, n0, w_fm0, z_fm0, n_fm0, weight_fm, D_fm, bias_term, nThreads_EXT);
+        end_time_reference = high_resolution_clock::now();
 
-    std::cout << "time_predict_EXT     : " << time_predict_EXT.count() << " s." << std::endl;
-    std::cout << "time_predict_omp     : " << time_predict_omp.count()      << " s." << std::endl;
-    std::cout << "time_update_EXT      : "  << time_update_EXT.count()  << " s." << std::endl;
-    std::cout << "time_update_omp: "       << time_update_omp.count()       << " s." << std::endl;
+        start_time_experimental = high_resolution_clock::now();
+        res_omp = predict_single_FULL_TEST(inds1, vals1, lenn, L1, baL2, ialpha, beta, w1, z1, n1, w_fm1, z_fm1, n_fm1, weight_fm, D_fm, bias_term, false);
+        end_time_experimental = high_resolution_clock::now();
+      }
+      else
+      {
+        start_time_experimental = high_resolution_clock::now();
+        res_omp = predict_single_FULL_TEST(inds1, vals1, lenn, L1, baL2, ialpha, beta, w1, z1, n1, w_fm1, z_fm1, n_fm1, weight_fm, D_fm, bias_term, false);
+        end_time_experimental = high_resolution_clock::now();
+        
+        start_time_reference = high_resolution_clock::now();
+        res_base = predict_fm_ftrl_avx(inds0, vals0, lenn, L1, baL2, ialpha, beta, w0, z0, n0, w_fm0, z_fm0, n_fm0, weight_fm, D_fm, bias_term, nThreads_EXT);
+        end_time_reference = high_resolution_clock::now();
+        
+      }
 
+      double diff0 = abs(res_base - res_omp);
 
-    double diff0 = abs(res_base - res_omp);
+      if (diff0 > 0.0001) {
+        printf("XXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXX, diff0 = %f\r\n", diff0);
+      }
 
-    if (diff0 > 0.0001) {
-      printf("XXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXX, diff0 = %f\r\n", diff0);
-    }
+      for (int k = 0; k < D_fm; k++) {
+        double wdiff = abs(w_fm0[k] - w_fm1[k]);
 
-    for (int k = 0; k < D_fm; k++) {
-      double wdiff = abs(w_fm0[k] - w_fm1[k]);
-
-      double zdiff = abs(z_fm0[k] - z_fm1[k]);
-
-      if (wdiff > 0.0001 || zdiff > 0.0001) {
-        printf("XXXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXXXXXXx at k = %d\r\n", k);
+        if (wdiff > 0.0001) {
+          printf("XXXXXXXXXXXXXXXXXXXXXXXXErrorXXXXXXXXXXXXXXXXXXXXXXXXXXXXx at k = %d\r\n", k);
+        }
       }
 
 
+      duration<double> time_reference = duration_cast<duration<double>>(end_time_reference - start_time_reference);
+      duration<double> time_experimental = duration_cast<duration<double>>(end_time_experimental - start_time_experimental);
+
+      if (isRefFirst)
+      {
+        std::cout << "time_reference      : " << time_reference.count() << " s." << std::endl;
+        std::cout << "time_experimental   : " << time_experimental.count() << " s." << std::endl;
+      }
+      else
+      {
+        std::cout << "time_experimental   : " << time_experimental.count() << " s." << std::endl;
+        std::cout << "time_reference      : " << time_reference.count() << " s." << std::endl;
+      }
+
+      time_reference_acc += time_reference.count();
+      time_experimental_acc += time_experimental.count();
+
     }
 
+    std::cout << "time_experimental_acc   : " << time_experimental_acc << " s." << std::endl;
+    std::cout << "time_reference_acc      : " << time_reference_acc << " s." << std::endl;
+   
 
     printf("run complete: %d\r\n", iRun);
 
